@@ -96,8 +96,6 @@
 /* ---- same logic as penny-extractor.js ---------------------------------- */
 const TAXONOMY = ['Groceries','Dining','Transport','Shopping','Bills & Utilities','Health','Entertainment','Travel','Transfers','Income','Fees & Charges','Other'];
 const DIRECTIONS = ['debit','credit','refund','transfer'];
-const PREFILL = '{';
-
 function buildSystemPrompt(bankHint){
   const bankClause = bankHint
     ? `Context indicates the bank is "${bankHint}"; use it unless the email clearly names another.`
@@ -142,8 +140,7 @@ function buildRequestBody(emailText, opts){
     max_tokens: 1024, temperature: 0,
     system: buildSystemPrompt(opts.bankHint),
     messages: [
-      { role:'user', content:`Bank alert email:\n\n${emailText}\n\nReturn the JSON object now.` },
-      { role:'assistant', content: PREFILL }
+      { role:'user', content:`Bank alert email:\n\n${emailText}\n\nReturn the JSON object now. Reply with ONLY a JSON object, no explanation, no markdown, no code fences.` }
     ]
   };
 }
@@ -181,7 +178,7 @@ function coerceAndValidate(raw){
 
 function finishExtraction(modelText){
   let parsed;
-  try { parsed = parseModelJson(PREFILL + (modelText||'')); }
+  try { parsed = parseModelJson(modelText||''); }
   catch(e){ return { ok:false, transaction:null, errors:['parse_error: '+e.message], modelRaw:modelText }; }
   const r = coerceAndValidate(parsed); r.modelRaw = modelText; return r;
 }
