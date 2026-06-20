@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>Penny · extractor test bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --paper:#FBFBF9; --ink:#16261F; --muted:#6E6E66; --hair:#E4E2DA;
+    --mint:#2FB783; --mint-fill:#E4F6EE; --mint-ink:#176B4B;
+    --amber:#C98A2B; --amber-fill:#FBF1DF;
+    --red:#A23B3B; --red-fill:#FBECEC;
+    --ledger-fill:#ECEAE2; --ledger-ink:#4A4A42;
+  }
+  *{box-sizing:border-box;}
+  html{-webkit-text-size-adjust:100%;}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif;line-height:1.5;
+    padding:max(22px,env(safe-area-inset-top)) 16px 56px;
+  }
+  .wrap{max-width:560px;margin:0 auto;}
+  .eyebrow{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--mint);font-weight:600;margin:0 0 8px;}
+  h1{font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:26px;letter-spacing:-.02em;margin:0 0 8px;}
+  .sub{color:var(--muted);font-size:14px;margin:0 0 22px;}
+
+  label{display:block;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;margin:0 0 6px;}
+  input,textarea{
+    width:100%;border:1px solid var(--hair);border-radius:11px;background:#fff;color:var(--ink);
+    font-family:"JetBrains Mono",monospace;font-size:14px;padding:12px 13px;margin:0 0 16px;
+    -webkit-appearance:none;
+  }
+  input:focus,textarea:focus{outline:none;border-color:var(--mint);box-shadow:0 0 0 3px var(--mint-fill);}
+  textarea{min-height:190px;resize:vertical;line-height:1.45;}
+  .hint{font-size:12px;color:var(--muted);margin:-12px 0 16px;}
+  .hint b{color:var(--red);font-weight:600;}
+
+  button{
+    width:100%;border:none;border-radius:12px;background:var(--ink);color:#fff;
+    font-family:"Space Grotesk",sans-serif;font-weight:600;font-size:16px;padding:15px;
+    cursor:pointer;transition:opacity .15s;
+  }
+  button:active{opacity:.85;}
+  button:disabled{opacity:.5;cursor:default;}
+
+  .result{margin-top:24px;display:none;}
+  .badge{
+    display:inline-flex;align-items:center;gap:7px;font-family:"JetBrains Mono",monospace;
+    font-size:12px;font-weight:600;padding:5px 11px;border-radius:20px;margin-bottom:14px;
+  }
+  .badge.ok{background:var(--mint-fill);color:var(--mint-ink);}
+  .badge.review{background:var(--amber-fill);color:var(--amber);}
+  .badge.fail{background:var(--red-fill);color:var(--red);}
+
+  .card{border:1px solid var(--hair);border-radius:14px;background:#fff;padding:4px 16px;}
+  .row{display:flex;justify-content:space-between;gap:14px;padding:11px 0;border-bottom:1px solid var(--hair);font-size:14px;}
+  .row:last-child{border-bottom:none;}
+  .row .k{font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap;padding-top:2px;}
+  .row .v{text-align:right;font-weight:500;word-break:break-word;}
+  .v .arrow{color:var(--muted);font-weight:400;}
+  .v small{display:block;color:var(--muted);font-weight:400;font-size:12px;margin-top:2px;}
+
+  .errors{margin-top:14px;border:1px solid var(--red);background:var(--red-fill);border-radius:11px;padding:12px 14px;font-size:13px;color:var(--red);}
+  .errors ul{margin:6px 0 0;padding-left:18px;}
+
+  details{margin-top:14px;border:1px solid var(--hair);border-radius:11px;background:#fff;}
+  summary{cursor:pointer;padding:11px 14px;font-family:"JetBrains Mono",monospace;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:600;}
+  pre{margin:0;padding:0 14px 14px;font-family:"JetBrains Mono",monospace;font-size:12px;line-height:1.5;overflow-x:auto;color:var(--ledger-ink);}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <p class="eyebrow">Penny · test bench</p>
+  <h1>Try the extractor</h1>
+  <p class="sub">Paste a real bank alert, tap Extract, and see exactly what the bookkeeper returns — cleaned merchant, category, the lot. Same prompt and guard as the module.</p>
+
+  <label for="key">Anthropic API key</label>
+  <input id="key" type="password" placeholder="sk-ant-..." autocomplete="off" autocapitalize="off" spellcheck="false" />
+  <p class="hint">Entered live and held in memory only — <b>never stored or committed</b>. Don't hardcode it into the page.</p>
+
+  <label for="bank">Bank hint (optional)</label>
+  <input id="bank" type="text" value="Citibank" autocapitalize="words" />
+
+  <label for="email">Bank alert email (plain text)</label>
+  <textarea id="email"></textarea>
+
+  <button id="go">Extract</button>
+
+  <div class="result" id="result"></div>
+</div>
+
+<script>
+/* ---- same logic as penny-extractor.js ---------------------------------- */
+const TAXONOMY = ['Groceries','Dining','Transport','Shopping','Bills & Utilities','Health','Entertainment','Travel','Transfers','Income','Fees & Charges','Other'];
+const DIRECTIONS = ['debit','credit','refund','transfer'];
+const PREFILL = '{';
+
+function buildSystemPrompt(bankHint){
+  const bankClause = bankHint
+    ? `Context indicates the bank is "${bankHint}"; use it unless the email clearly names another.`
+    : `Infer it from the email content.`;
+  return [
+'You are an expert bookkeeper. You read a single bank transaction-alert email',
+'and return exactly one structured transaction as JSON.','',
+'Return ONLY a JSON object — no explanation, no markdown, no code fences.',
+'The object must have exactly these keys:',
+'date, time, merchant_raw, merchant, amount, currency, direction, bank,',
+'card_last4, category, category_reason, confidence, needs_review','',
+'Field rules:',
+"- date: ISO 'YYYY-MM-DD'. Singapore banks often write DD/MM/YY — read day first",
+"  (e.g. '19/06/26' is 19 June 2026 => '2026-06-19'). Never swap day and month.",
+"- time: 24-hour 'HH:MM' if the email states one, otherwise null.",
+'- merchant_raw: the merchant/description string exactly as written in the email.',
+'- merchant: a clean, canonical name for the same merchant. Strip branch codes,',
+"  store numbers, locations and trailing country/acquirer codes; expand obvious",
+"  abbreviations (e.g. 'NTUC FP' -> 'NTUC FairPrice'). The same shop must always",
+'  normalize to the same value so it groups correctly later.',
+'- amount: a positive number, decimal point, no thousands separators, no symbol.',
+'  Always positive regardless of direction.',
+'- currency: ISO 4217 three-letter code, uppercase (e.g. SGD, USD).',
+"- direction: one of 'debit', 'credit', 'refund', 'transfer'. debit = money out;",
+"  credit = money in; refund = reversal of a prior purchase; transfer = between the",
+"  holder's own accounts. Default to 'debit' for ordinary card spend.",
+`- bank: the issuing bank's name. ${bankClause}`,
+'- card_last4: last four digits of the card if present, otherwise null. Never guess.',
+`- category: choose exactly one from this list — ${TAXONOMY.join(', ')}. If none fits, use 'Other'.`,
+'- category_reason: one short sentence explaining the category choice.',
+'- confidence: your overall confidence, a number from 0 to 1.',
+"- needs_review: true if confidence is below 0.8, if you fell back to 'Other', if any",
+'  required field was unclear, or if the transaction looks unusual; otherwise false.','',
+'Never invent values. Use null only where allowed (time, card_last4).'
+  ].join('\n');
+}
+
+function buildRequestBody(emailText, opts){
+  opts = opts || {};
+  return {
+    model: opts.model || 'claude-sonnet-4-6',
+    max_tokens: 1024, temperature: 0,
+    system: buildSystemPrompt(opts.bankHint),
+    messages: [
+      { role:'user', content:`Bank alert email:\n\n${emailText}\n\nReturn the JSON object now.` },
+      { role:'assistant', content: PREFILL }
+    ]
+  };
+}
+
+function parseModelJson(text){
+  if(typeof text!=='string') throw new Error('model returned non-text');
+  let s = text.trim().replace(/^```(?:json)?/i,'').replace(/```$/,'').trim();
+  try { return JSON.parse(s); } catch(_){}
+  const a=s.indexOf('{'), b=s.lastIndexOf('}');
+  if(a!==-1 && b>a) return JSON.parse(s.slice(a,b+1));
+  throw new Error('no JSON object found in: ' + s.slice(0,200));
+}
+
+function coerceAndValidate(raw){
+  const errors=[]; const t=Object.assign({},raw);
+  for(const k of ['merchant_raw','merchant','currency','direction','bank','category','category_reason'])
+    if(typeof t[k]==='string') t[k]=t[k].trim();
+  if(typeof t.currency==='string') t.currency=t.currency.toUpperCase();
+  if(typeof t.direction==='string') t.direction=t.direction.toLowerCase();
+  if(typeof t.amount==='string') t.amount=Number(t.amount.replace(/[^0-9.\-]/g,''));
+  if(typeof t.amount!=='number'||!isFinite(t.amount)||t.amount<=0) errors.push('amount must be a positive number');
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(t.date||'')||isNaN(Date.parse(t.date))) errors.push('date must be a valid YYYY-MM-DD');
+  if(t.time!==null && !/^\d{2}:\d{2}$/.test(t.time||'')) errors.push('time must be HH:MM or null');
+  if(!t.merchant) errors.push('merchant is missing');
+  if(!/^[A-Z]{3}$/.test(t.currency||'')) errors.push('currency must be a 3-letter code');
+  if(!DIRECTIONS.includes(t.direction)) errors.push('direction is invalid');
+  if(!t.bank) errors.push('bank is missing');
+  if(t.card_last4!==null && !/^\d{4}$/.test(String(t.card_last4||''))) errors.push('card_last4 must be 4 digits or null');
+  if(!TAXONOMY.includes(t.category)){ errors.push('category not in taxonomy'); t.category='Other'; }
+  if(typeof t.confidence!=='number'||t.confidence<0||t.confidence>1){ errors.push('confidence out of range'); t.confidence=0; }
+  if(typeof t.needs_review!=='boolean') t.needs_review=true;
+  if(t.confidence<0.8 || t.category==='Other' || errors.length) t.needs_review=true;
+  return { ok: errors.length===0, transaction:t, errors };
+}
+
+function finishExtraction(modelText){
+  let parsed;
+  try { parsed = parseModelJson(PREFILL + (modelText||'')); }
+  catch(e){ return { ok:false, transaction:null, errors:['parse_error: '+e.message], modelRaw:modelText }; }
+  const r = coerceAndValidate(parsed); r.modelRaw = modelText; return r;
+}
+
+async function callModelBrowser(requestBody, apiKey){
+  const res = await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{
+      'content-type':'application/json',
+      'x-api-key':apiKey,
+      'anthropic-version':'2023-06-01',
+      'anthropic-dangerous-direct-browser-access':'true'
+    },
+    body:JSON.stringify(requestBody)
+  });
+  if(!res.ok) throw new Error('Anthropic API '+res.status+': '+(await res.text()));
+  const data = await res.json();
+  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('');
+}
+
+/* ---- sample email & UI -------------------------------------------------- */
+const SAMPLE = [
+'Dear Customer,','',
+'This is to confirm a transaction on your Citibank Card.','',
+'Card number         : ending 1234',
+'Transaction date    : 19/06/26',
+'Transaction time    : 14:32',
+'Merchant            : NTUC FP-BEDOK#12 SG',
+'Amount              : SGD 23.45','',
+'If you do not recognise this transaction, please contact us immediately.','',
+'Yours sincerely,','Citibank'
+].join('\n');
+
+const $ = id => document.getElementById(id);
+$('email').value = SAMPLE;
+
+function row(k, vNode){
+  const r=document.createElement('div'); r.className='row';
+  const kk=document.createElement('div'); kk.className='k'; kk.textContent=k;
+  const vv=document.createElement('div'); vv.className='v';
+  if(typeof vNode==='string') vv.textContent=vNode; else vv.appendChild(vNode);
+  r.appendChild(kk); r.appendChild(vv); return r;
+}
+
+function render(result){
+  const box=$('result'); box.innerHTML=''; box.style.display='block';
+  const t=result.transaction;
+
+  const badge=document.createElement('div'); badge.className='badge ';
+  if(!result.ok && !t){ badge.className+='fail'; badge.textContent='✕ could not parse'; }
+  else if(!result.ok){ badge.className+='fail'; badge.textContent='✕ failed validation'; }
+  else if(t.needs_review){ badge.className+='review'; badge.textContent='⚑ needs review'; }
+  else { badge.className+='ok'; badge.textContent='✓ clean'; }
+  box.appendChild(badge);
+
+  if(t){
+    const card=document.createElement('div'); card.className='card';
+    const merch=document.createElement('div');
+    merch.innerHTML='';
+    const strong=document.createElement('span'); strong.textContent=t.merchant||'—';
+    const small=document.createElement('small'); small.textContent='raw: '+(t.merchant_raw||'—');
+    merch.appendChild(strong); merch.appendChild(small);
+    card.appendChild(row('Merchant', merch));
+
+    const amt=document.createElement('span');
+    amt.textContent=(t.currency||'')+' '+(typeof t.amount==='number'?t.amount.toFixed(2):t.amount);
+    card.appendChild(row('Amount', amt));
+    card.appendChild(row('Direction', t.direction||'—'));
+    card.appendChild(row('Date / time', (t.date||'—')+(t.time?(' · '+t.time):'')));
+
+    const cat=document.createElement('div');
+    const c=document.createElement('span'); c.textContent=t.category||'—';
+    const cr=document.createElement('small'); cr.textContent=t.category_reason||'';
+    cat.appendChild(c); cat.appendChild(cr);
+    card.appendChild(row('Category', cat));
+
+    card.appendChild(row('Card', t.card_last4?('•••• '+t.card_last4):'—'));
+    card.appendChild(row('Bank', t.bank||'—'));
+    card.appendChild(row('Confidence', typeof t.confidence==='number'?Math.round(t.confidence*100)+'%':'—'));
+    box.appendChild(card);
+  }
+
+  if(result.errors && result.errors.length){
+    const e=document.createElement('div'); e.className='errors';
+    e.innerHTML='<b>Guard caught:</b>';
+    const ul=document.createElement('ul');
+    result.errors.forEach(msg=>{ const li=document.createElement('li'); li.textContent=msg; ul.appendChild(li); });
+    e.appendChild(ul); box.appendChild(e);
+  }
+
+  const det=document.createElement('details');
+  det.innerHTML='<summary>Raw model output</summary>';
+  const pre=document.createElement('pre'); pre.textContent=result.modelRaw||'(none)';
+  det.appendChild(pre); box.appendChild(det);
+}
+
+$('go').addEventListener('click', async ()=>{
+  const key=$('key').value.trim();
+  const email=$('email').value.trim();
+  if(!key){ alert('Enter your Anthropic API key first.'); return; }
+  if(!email){ alert('Paste a bank alert email first.'); return; }
+  const btn=$('go'); const label=btn.textContent; btn.disabled=true; btn.textContent='Extracting…';
+  try{
+    const body=buildRequestBody(email,{ bankHint:$('bank').value.trim()||undefined });
+    const modelText=await callModelBrowser(body,key);
+    render(finishExtraction(modelText));
+  }catch(err){
+    render({ ok:false, transaction:null, errors:[err.message], modelRaw:null });
+  }finally{
+    btn.disabled=false; btn.textContent=label;
+  }
+});
+</script>
+</body>
+</html>
