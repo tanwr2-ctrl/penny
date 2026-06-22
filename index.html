@@ -844,7 +844,17 @@ function showToast(msg) {
       s.counts.total++;
       const flagged = Boolean(txn.needs_review);
       if (flagged) s.counts.needsReview++;
-      const { sgd, ok } = toSGD(txn.amount, txn.currency);
+            // resolve amount: actual posted SGD overrides the FX estimate
+      let sgd, ok, foreign;
+      const hasActual = txn.sgd_amount != null && txn.sgd_amount !== "";
+      if (hasActual) {
+        sgd = Number(txn.sgd_amount);
+        ok = !Number.isNaN(sgd);
+        foreign = false;            // confirmed — no longer soft
+      } else {
+        ({ sgd, ok, foreign } = toSGD(txn.amount, txn.currency));
+      }
+     
       if (!ok) {
         s.counts.unknownCurrency++;
         s.warnings.push(`Unknown currency '${txn.currency}' on txn ${txn.id ?? "(no id)"} — excluded`);
