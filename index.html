@@ -806,7 +806,7 @@ function showToast(msg) {
   const DEBIT_VALUES    = new Set(["debit", "dr", "out", "outflow"]);
   const CREDIT_VALUES = new Set(["credit", "cr", "in", "inflow", "refund"]);
   const TRANSFER_VALUES = new Set(["transfer", "xfer"]);
-  const DATE_FIELD = "transaction_date";
+  const DATE_FIELD = "date";
   // ----------------------------------------------------------------
 
   const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -896,7 +896,7 @@ function showToast(msg) {
   }
 
   // ---- AUTO-RUN (diagnostic mode) ----
-  const MONTH_TO_CHECK = "";  // filter OFF for now
+  const MONTH_TO_CHECK = "2026-06";  // filter OFF for now
 
   async function runEngineCheck() {
     const out = document.getElementById("penny-engine-output");
