@@ -916,6 +916,7 @@ function showToast(msg) {
         return;
       }
       const txns = await fetchTransactions();
+      console.log("RAW FIRST ROW:", txns[0]);
       const first = (txns && txns[0]) || null;
       const debug =
         `ROWS RETURNED: ${txns ? txns.length : "null"}\n` +
