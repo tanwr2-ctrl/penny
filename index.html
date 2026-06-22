@@ -443,13 +443,13 @@ async function fetchTransactions() {
   try {
     const { data, error } = await sb
       .from('transactions')
-      .select('date, time, merchant, amount, currency, bank, category, direction, needs_review')
+      .select('id, date, time, merchant, amount, currency, bank, category, direction, needs_review, sgd_amount')
       .order('date', { ascending: false })
       .order('time', { ascending: false, nullsFirst: false });
     if (error) { console.error('Supabase fetch error:', error); return []; }
     return (data || [])
-      .map((r, i) => ({
-        id: i,
+        id: r.id,
+        rowIndex: i,
         date: r.date || '',
         time: r.time || '',
         merchant: r.merchant || 'Unknown',
@@ -459,6 +459,7 @@ async function fetchTransactions() {
         category: r.category || 'Other',
         direction: r.direction || 'debit',
         needs_review: !!r.needs_review,
+        sgd_amount: r.sgd_amount != null ? Number(r.sgd_amount) : null,
       }))
       .filter(t => t.amount > 0);
   } catch (e) {
