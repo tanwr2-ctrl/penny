@@ -791,5 +791,133 @@ function showToast(msg) {
   clearTimeout(t._t); t._t = setTimeout(() => t.style.opacity = '0', 2500);
 }
 </script>
+ <!-- ============================================================
+     PENNY CORRECTNESS ENGINE — TEMPORARY VALIDATION SCAFFOLD
+     Paste just before </body>. Delete after numbers are confirmed.
+     ============================================================ -->
+<div id="penny-engine-output" style="position:fixed;top:0;left:0;right:0;max-height:50vh;overflow:auto;background:#111;color:#0f0;font-family:monospace;font-size:12px;white-space:pre-wrap;padding:12px;z-index:99999;border-bottom:2px solid #0f0;">Loading engine…</div>
+<script>
+(function () {
+  // ---- CONFIG: VERIFY these against your real Supabase values ----
+  const BASE_CURRENCY = "SGD";
+  const FX_TO_SGD = { SGD: 1, USD: 1.35 /*, HKD: 0.17 */ };
+  const TRANSFER_CATEGORIES = new Set(["Transfer", "Transfers", "Credit Card Payment"]);
+  const INCOME_CATEGORIES   = new Set(["Salary", "Income", "Interest", "Dividend"]);
+  const DEBIT_VALUES    = new Set(["debit", "dr", "out", "outflow"]);
+  const CREDIT_VALUES   = new Set(["credit", "cr", "in", "inflow"]);
+  const TRANSFER_VALUES = new Set(["transfer", "xfer"]);
+  const DATE_FIELD = "transaction_date";
+  // ----------------------------------------------------------------
+
+  const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+  function toSGD(amount, currency) {
+    const rate = FX_TO_SGD[currency];
+    if (rate == null) return { sgd: 0, ok: false };
+    return { sgd: Number(amount) * rate, ok: true };
+  }
+  function normDirection(direction) {
+    const d = String(direction || "").trim().toLowerCase();
+    if (DEBIT_VALUES.has(d)) return "debit";
+    if (CREDIT_VALUES.has(d)) return "credit";
+    return "unknown";
+  }
+  function classify(txn) {
+    const cat = String(txn.category || "").trim();
+    const dir = String(txn.direction || "").trim().toLowerCase();
+    if (TRANSFER_CATEGORIES.has(cat) || TRANSFER_VALUES.has(dir)) return "transfer";
+    if (INCOME_CATEGORIES.has(cat) && normDirection(dir) === "credit") return "income";
+    return "spend";
+  }
+  function summarize(transactions, opts = {}) {
+    let rows = transactions || [];
+    if (opts.month) rows = rows.filter((t) => String(t[DATE_FIELD] || "").startsWith(opts.month));
+    const s = {
+      baseCurrency: BASE_CURRENCY, hasIncome: false,
+      spend: { total: 0, unconfirmed: 0 }, income: { total: 0, unconfirmed: 0 }, net: 0,
+      categories: [], excluded: { transfers: 0 },
+      counts: { total: 0, spend: 0, income: 0, transfers: 0, needsReview: 0, unknownDirection: 0, unknownCurrency: 0 },
+      warnings: [],
+    };
+    const byCat = {};
+    for (const txn of rows) {
+      s.counts.total++;
+      const flagged = Boolean(txn.needs_review);
+      if (flagged) s.counts.needsReview++;
+      const { sgd, ok } = toSGD(txn.amount, txn.currency);
+      if (!ok) {
+        s.counts.unknownCurrency++;
+        s.warnings.push(`Unknown currency '${txn.currency}' on txn ${txn.id ?? "(no id)"} — excluded`);
+        continue;
+      }
+      const role = classify(txn);
+      if (role === "transfer") { s.counts.transfers++; s.excluded.transfers += sgd; continue; }
+      if (role === "income") {
+        s.counts.income++; s.income.total += sgd;
+        if (flagged) s.income.unconfirmed += sgd;
+        continue;
+      }
+      s.counts.spend++;
+      const dir = normDirection(txn.direction);
+      let signed = sgd;
+      if (dir === "credit") signed = -sgd;
+      else if (dir === "unknown") {
+        s.counts.unknownDirection++;
+        s.warnings.push(`Unknown direction '${txn.direction}' on txn ${txn.id ?? "(no id)"} — assumed spend`);
+      }
+      s.spend.total += signed;
+      if (flagged) s.spend.unconfirmed += signed;
+      const cat = String(txn.category || "Uncategorized").trim() || "Uncategorized";
+      byCat[cat] ||= { total: 0, count: 0 };
+      byCat[cat].total += signed; byCat[cat].count++;
+    }
+    s.hasIncome = s.counts.income > 0;
+    s.categories = Object.entries(byCat)
+      .map(([category, v]) => ({ category, total: round2(v.total), count: v.count }))
+      .sort((a, b) => Math.abs(b.total) - Math.abs(a.total));
+    s.spend.total = round2(s.spend.total); s.spend.unconfirmed = round2(s.spend.unconfirmed);
+    s.income.total = round2(s.income.total); s.income.unconfirmed = round2(s.income.unconfirmed);
+    s.excluded.transfers = round2(s.excluded.transfers);
+    s.net = s.hasIncome ? round2(s.income.total - s.spend.total) : 0;
+    return s;
+  }
+  function formatSummary(s) {
+    return [
+      `Base: ${s.baseCurrency}`,
+      `Spend:  ${s.spend.total}  (unconfirmed ${s.spend.unconfirmed})`,
+      s.hasIncome ? `Income: ${s.income.total}  (unconfirmed ${s.income.unconfirmed})` : `Income: none`,
+      s.hasIncome ? `Net:    ${s.net}` : null,
+      `Transfers excluded: ${s.excluded.transfers}`,
+      `Counts: ${JSON.stringify(s.counts)}`,
+      `— Categories —`,
+      ...s.categories.map((c) => `  ${c.category}: ${c.total} (n=${c.count})`),
+      s.warnings.length ? `⚠️ Warnings:\n  ${s.warnings.join("\n  ")}` : `No warnings.`,
+    ].filter(Boolean).join("\n");
+  }
+
+  // ---- AUTO-RUN: change the month here to one you want to check ----
+  const MONTH_TO_CHECK = "2026-05";  // or "" for all transactions
+
+  async function runEngineCheck() {
+    const out = document.getElementById("penny-engine-output");
+    try {
+      if (typeof fetchTransactions !== "function") {
+        out.textContent = "✗ fetchTransactions() not found. Move this block to AFTER it's defined (just before </body>).";
+        return;
+      }
+      const txns = await fetchTransactions();
+      const s = summarize(txns, MONTH_TO_CHECK ? { month: MONTH_TO_CHECK } : {});
+      out.textContent = `MONTH: ${MONTH_TO_CHECK || "ALL"}\n\n` + formatSummary(s);
+      console.log("[Penny engine] summary:", s);
+    } catch (e) {
+      out.textContent = "✗ Error: " + (e && e.message ? e.message : String(e));
+      console.error("[Penny engine]", e);
+    }
+  }
+  if (document.readyState === "complete") runEngineCheck();
+  else window.addEventListener("load", runEngineCheck);
+})();
+</script>
+
 </body>
 </html>
