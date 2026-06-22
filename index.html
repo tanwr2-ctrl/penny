@@ -895,20 +895,26 @@ function showToast(msg) {
     ].filter(Boolean).join("\n");
   }
 
-  // ---- AUTO-RUN: change the month here to one you want to check ----
-  const MONTH_TO_CHECK = "";  // or "" for all transactions
+  // ---- AUTO-RUN (diagnostic mode) ----
+  const MONTH_TO_CHECK = "";  // filter OFF for now
 
   async function runEngineCheck() {
     const out = document.getElementById("penny-engine-output");
     try {
       if (typeof fetchTransactions !== "function") {
-        out.textContent = "✗ fetchTransactions() not found. Move this block to AFTER it's defined (just before </body>).";
+        out.textContent = "✗ fetchTransactions() not found.";
         return;
       }
       const txns = await fetchTransactions();
+      const first = (txns && txns[0]) || null;
+      const debug =
+        `ROWS RETURNED: ${txns ? txns.length : "null"}\n` +
+        `FIRST ROW KEYS: ${first ? Object.keys(first).join(", ") : "—"}\n` +
+        `FIRST ROW: ${first ? JSON.stringify(first, null, 1) : "—"}\n` +
+        `----------------------------------------\n`;
       const s = summarize(txns, MONTH_TO_CHECK ? { month: MONTH_TO_CHECK } : {});
-      out.textContent = `MONTH: ${MONTH_TO_CHECK || "ALL"}\n\n` + formatSummary(s);
-      console.log("[Penny engine] summary:", s);
+      out.textContent = debug + `MONTH: ${MONTH_TO_CHECK || "ALL"}\n\n` + formatSummary(s);
+      console.log("[Penny engine] first row:", first, "summary:", s);
     } catch (e) {
       out.textContent = "✗ Error: " + (e && e.message ? e.message : String(e));
       console.error("[Penny engine]", e);
@@ -917,6 +923,7 @@ function showToast(msg) {
   if (document.readyState === "complete") runEngineCheck();
   else window.addEventListener("load", runEngineCheck);
 })();
+
 </script>
 
 </body>
