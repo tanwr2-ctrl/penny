@@ -800,23 +800,22 @@ function showToast(msg) {
 <div id="penny-engine-output" style="position:fixed;top:0;left:0;right:0;max-height:50vh;overflow:auto;background:#111;color:#0f0;font-family:monospace;font-size:12px;white-space:pre-wrap;padding:12px;z-index:99999;border-bottom:2px solid #0f0;">Loading engine…</div>
 <script>
 (function () {
-  // ---- CONFIG: VERIFY these against your real Supabase values ----
   const BASE_CURRENCY = "SGD";
-  const FX_TO_SGD = { SGD: 1, USD: 1.35 /*, HKD: 0.17 */ };
+  const FX_TO_SGD = { SGD: 1, USD: 1.33 };
   const TRANSFER_CATEGORIES = new Set(["Transfer", "Transfers", "Credit Card Payment"]);
   const INCOME_CATEGORIES   = new Set(["Salary", "Income", "Interest", "Dividend"]);
   const DEBIT_VALUES    = new Set(["debit", "dr", "out", "outflow"]);
-  const CREDIT_VALUES = new Set(["credit", "cr", "in", "inflow", "refund"]);
+  const CREDIT_VALUES   = new Set(["credit", "cr", "in", "inflow", "refund"]);
   const TRANSFER_VALUES = new Set(["transfer", "xfer"]);
   const DATE_FIELD = "date";
-  // ----------------------------------------------------------------
 
   const round2 = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
   function toSGD(amount, currency) {
-    const rate = FX_TO_SGD[currency];
-    if (rate == null) return { sgd: 0, ok: false };
-    return { sgd: Number(amount) * rate, ok: true };
+    const c = String(currency || "").trim().toUpperCase();
+    const rate = FX_TO_SGD[c];
+    if (rate == null) return { sgd: 0, ok: false, foreign: false };
+    return { sgd: Number(amount) * rate, ok: true, foreign: c !== BASE_CURRENCY };
   }
   function normDirection(direction) {
     const d = String(direction || "").trim().toLowerCase();
@@ -838,7 +837,8 @@ function showToast(msg) {
       baseCurrency: BASE_CURRENCY, hasIncome: false,
       spend: { total: 0, unconfirmed: 0 }, income: { total: 0, unconfirmed: 0 }, net: 0,
       categories: [], excluded: { transfers: 0 },
-      counts: { total: 0, spend: 0, income: 0, transfers: 0, needsReview: 0, unknownDirection: 0, unknownCurrency: 0 },
+      counts: { total: 0, spend: 0, income: 0, transfers: 0,
+                needsReview: 0, estimatedFx: 0, unknownDirection: 0, unknownCurrency: 0 },
       warnings: [],
     };
     const byCat = {};
@@ -846,17 +846,16 @@ function showToast(msg) {
       s.counts.total++;
       const flagged = Boolean(txn.needs_review);
       if (flagged) s.counts.needsReview++;
-            // resolve amount: actual posted SGD overrides the FX estimate
+
+      // resolve amount: actual posted SGD overrides the FX estimate
       let sgd, ok, foreign;
       const hasActual = txn.sgd_amount != null && txn.sgd_amount !== "";
       if (hasActual) {
-        sgd = Number(txn.sgd_amount);
-        ok = !Number.isNaN(sgd);
-        foreign = false;            // confirmed — no longer soft
+        sgd = Number(txn.sgd_amount); ok = !Number.isNaN(sgd); foreign = false;
       } else {
         ({ sgd, ok, foreign } = toSGD(txn.amount, txn.currency));
       }
-     
+
       if (!ok) {
         s.counts.unknownCurrency++;
         s.warnings.push(`Unknown currency '${txn.currency}' on txn ${txn.id ?? "(no id)"} — excluded`);
@@ -866,7 +865,8 @@ function showToast(msg) {
       if (role === "transfer") { s.counts.transfers++; s.excluded.transfers += sgd; continue; }
       if (role === "income") {
         s.counts.income++; s.income.total += sgd;
-        if (flagged) s.income.unconfirmed += sgd;
+        if (flagged || foreign) s.income.unconfirmed += sgd;
+        if (foreign) s.counts.estimatedFx++;
         continue;
       }
       s.counts.spend++;
@@ -878,7 +878,8 @@ function showToast(msg) {
         s.warnings.push(`Unknown direction '${txn.direction}' on txn ${txn.id ?? "(no id)"} — assumed spend`);
       }
       s.spend.total += signed;
-      if (flagged) s.spend.unconfirmed += signed;
+      if (flagged || foreign) s.spend.unconfirmed += signed;
+      if (foreign) s.counts.estimatedFx++;
       const cat = String(txn.category || "Uncategorized").trim() || "Uncategorized";
       byCat[cat] ||= { total: 0, count: 0 };
       byCat[cat].total += signed; byCat[cat].count++;
@@ -907,27 +908,21 @@ function showToast(msg) {
     ].filter(Boolean).join("\n");
   }
 
-  // ---- AUTO-RUN (diagnostic mode) ----
-  const MONTH_TO_CHECK = "2026-06";  // filter OFF for now
+  const MONTH_TO_CHECK = "2026-06";  // "" for all
 
   async function runEngineCheck() {
     const out = document.getElementById("penny-engine-output");
     try {
-      if (typeof fetchTransactions !== "function") {
-        out.textContent = "✗ fetchTransactions() not found.";
-        return;
-      }
+      if (typeof fetchTransactions !== "function") { out.textContent = "✗ fetchTransactions() not found."; return; }
       const txns = await fetchTransactions();
-      console.log("RAW FIRST ROW:", txns[0]);
       const first = (txns && txns[0]) || null;
       const debug =
         `ROWS RETURNED: ${txns ? txns.length : "null"}\n` +
-        `FIRST ROW KEYS: ${first ? Object.keys(first).join(", ") : "—"}\n` +
         `FIRST ROW: ${first ? JSON.stringify(first, null, 1) : "—"}\n` +
         `----------------------------------------\n`;
       const s = summarize(txns, MONTH_TO_CHECK ? { month: MONTH_TO_CHECK } : {});
       out.textContent = debug + `MONTH: ${MONTH_TO_CHECK || "ALL"}\n\n` + formatSummary(s);
-      console.log("[Penny engine] first row:", first, "summary:", s);
+      console.log("[Penny engine] summary:", s);
     } catch (e) {
       out.textContent = "✗ Error: " + (e && e.message ? e.message : String(e));
       console.error("[Penny engine]", e);
@@ -936,8 +931,8 @@ function showToast(msg) {
   if (document.readyState === "complete") runEngineCheck();
   else window.addEventListener("load", runEngineCheck);
 })();
-
 </script>
+
 
 </body>
 </html>
