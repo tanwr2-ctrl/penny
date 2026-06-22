@@ -448,6 +448,7 @@ async function fetchTransactions() {
       .order('time', { ascending: false, nullsFirst: false });
     if (error) { console.error('Supabase fetch error:', error); return []; }
     return (data || [])
+        .map((r, i) => ({
         id: r.id,
         rowIndex: i,
         date: r.date || '',
