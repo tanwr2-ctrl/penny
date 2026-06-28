@@ -410,7 +410,9 @@
 const SUPABASE_URL = 'https://bsvmykiqyhxtjahfgchf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY = 'sb_publishable_rp-hCOUoV6UkCI28r81gfw_9sLLPxxF';  // Settings > API Keys > Publishable key
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+window.pennySB = sb;
 const MONTHLY_BUDGET = 3000;
+
 
 // ── STATE ──
 let allTransactions = [];
@@ -848,11 +850,29 @@ function showToast(msg) {
   // If the debug panel says "Supabase client not found", change the name
   // `supabaseClient` below to whatever variable your app assigns from supabase.createClient(...).
   function getSB() {
-    if (typeof supabaseClient === 'undefined' || !supabaseClient) {
-      reviewLog('Supabase client not found — edit getSB() to use your client variable name.', true);
-      return null;
+    // Try the common variable names first
+    var candidates = ['pennySB', 'supabaseClient', 'supabase', 'sb', 'client', '_supabase', 'db'];
+    for (var i = 0; i < candidates.length; i++) {
+      try {
+        var c = window[candidates[i]];
+        if (c && typeof c.from === 'function' && c.auth) {
+          reviewLog('Using client found at window.' + candidates[i]);
+          return c;
+        }
+      } catch (e) {}
     }
-    return supabaseClient;
+    // Fall back: scan every global for something that looks like a Supabase client
+    for (var key in window) {
+      try {
+        var obj = window[key];
+        if (obj && typeof obj.from === 'function' && obj.auth && typeof obj.auth === 'object') {
+          reviewLog('Auto-detected client at window.' + key);
+          return obj;
+        }
+      } catch (e) {}
+    }
+    reviewLog('No Supabase client found on window. Tell me the variable name from your createClient() line.', true);
+    return null;
   }
 
   function esc(v) {
