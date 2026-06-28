@@ -793,6 +793,171 @@ function showToast(msg) {
   clearTimeout(t._t); t._t = setTimeout(() => t.style.opacity = '0', 2500);
 }
 </script>
+
+ <!-- ===================== PENNY REVIEW SCREEN (Stage 1: render only) ===================== -->
+<style>
+  #review-screen { max-width: 720px; margin: 16px auto; padding: 0 12px; font-family: -apple-system, system-ui, sans-serif; }
+  #review-screen h2 { font-size: 20px; }
+  .review-card { border: 1px solid #ddd; border-radius: 12px; padding: 14px; margin: 12px 0; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .review-card .ctx { margin-bottom: 10px; }
+  .ctx-row { display: flex; gap: 8px; font-size: 13px; padding: 2px 0; }
+  .ctx-k { color: #888; min-width: 90px; }
+  .ctx-v { color: #222; font-weight: 500; }
+  .fields { display: flex; flex-direction: column; gap: 10px; }
+  .fields label { display: flex; flex-direction: column; font-size: 12px; color: #666; gap: 4px; }
+  .fields input, .fields select { font-size: 16px; padding: 8px; border: 1px solid #ccc; border-radius: 8px; }
+  .row-actions { margin-top: 12px; display: flex; align-items: center; gap: 10px; }
+  .save-btn { font-size: 15px; padding: 9px 14px; border: 0; border-radius: 8px; background: #2563eb; color: #fff; }
+  .save-state { font-size: 12px; color: #666; }
+  #open-review-btn { position: fixed; bottom: 16px; right: 16px; z-index: 9998; padding: 12px 16px; border: 0; border-radius: 999px; background: #111; color: #fff; font-size: 15px; box-shadow: 0 2px 8px rgba(0,0,0,.3); }
+  #review-debug { position: fixed; top: 0; left: 0; right: 0; background: #1a1a1a; color: #9eff9e; font: 12px ui-monospace, monospace; z-index: 9999; max-height: 32vh; overflow: auto; display: none; }
+  #review-debug .hdr { padding: 6px 10px; background: #000; color: #ccc; position: sticky; top: 0; }
+  #review-debug .body { padding: 6px 10px; }
+</style>
+
+<button id="open-review-btn">Review Queue</button>
+
+<section id="review-screen" style="display:none;">
+  <h2>Review Queue <span id="review-count"></span></h2>
+  <div id="review-status"></div>
+  <div id="review-list"></div>
+  <datalist id="rv-cat"></datalist>
+  <datalist id="rv-cur"></datalist>
+</section>
+
+<div id="review-debug">
+  <div class="hdr" onclick="this.parentElement.style.display='none'">debug · tap to hide</div>
+  <div class="body" id="review-debug-body"></div>
+</div>
+
+<script>
+(function () {
+  // --- on-page logging (no console on iPad) ---
+  function reviewLog(msg, isError) {
+    const body = document.getElementById('review-debug-body');
+    const panel = document.getElementById('review-debug');
+    if (!body || !panel) return;
+    panel.style.display = 'block';
+    const line = document.createElement('div');
+    line.textContent = (isError ? '❌ ' : '• ') + msg;
+    if (isError) line.style.color = '#ff6b6b';
+    body.appendChild(line);
+  }
+
+  // --- INTEGRATION POINT: resolve your existing Supabase client ---
+  // If the debug panel says "Supabase client not found", change the name
+  // `supabaseClient` below to whatever variable your app assigns from supabase.createClient(...).
+  function getSB() {
+    if (typeof supabaseClient === 'undefined' || !supabaseClient) {
+      reviewLog('Supabase client not found — edit getSB() to use your client variable name.', true);
+      return null;
+    }
+    return supabaseClient;
+  }
+
+  function esc(v) {
+    return (v == null ? '' : String(v))
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function fillDatalist(id, values) {
+    const dl = document.getElementById(id);
+    if (dl) dl.innerHTML = values.map(v => '<option value="' + esc(v) + '">').join('');
+  }
+
+  function renderReviewCard(r, dirBase) {
+    const card = document.createElement('div');
+    card.className = 'review-card';
+    card.dataset.id = r.id;
+
+    const ctx = [];
+    if (r.date) ctx.push(['Date', r.date]);
+    if (r.merchant) ctx.push(['Merchant', r.merchant]);
+    if (r.description) ctx.push(['Description', r.description]);
+    if (r.bank) ctx.push(['Bank', r.bank]);
+    if (r.review_reason) ctx.push(['Flagged', r.review_reason]);
+    const ctxHtml = ctx.map(([k,v]) =>
+      '<div class="ctx-row"><span class="ctx-k">' + esc(k) + '</span><span class="ctx-v">' + esc(v) + '</span></div>'
+    ).join('');
+
+    const dirOpts = dirBase.slice();
+    if (r.direction && !dirOpts.includes(r.direction)) dirOpts.unshift(r.direction);
+    const dirHtml = dirOpts.map(d =>
+      '<option value="' + esc(d) + '"' + (d === r.direction ? ' selected' : '') + '>' + esc(d) + '</option>'
+    ).join('');
+
+    card.innerHTML =
+      '<div class="ctx">' + ctxHtml + '</div>' +
+      '<div class="fields">' +
+        '<label>Amount<input type="number" step="0.01" class="f-amount" value="' + esc(r.amount) + '"></label>' +
+        '<label>Currency<input type="text" class="f-currency" list="rv-cur" value="' + esc(r.currency) + '"></label>' +
+        '<label>Category<input type="text" class="f-category" list="rv-cat" value="' + esc(r.category) + '"></label>' +
+        '<label>Direction<select class="f-direction">' + dirHtml + '</select></label>' +
+        '<label>Actual SGD posted<input type="number" step="0.01" class="f-sgd" placeholder="leave blank if unknown" value="' + (r.sgd_amount == null ? '' : esc(r.sgd_amount)) + '"></label>' +
+      '</div>' +
+      '<div class="row-actions"><button class="save-btn">Save &amp; clear flag</button><span class="save-state"></span></div>';
+
+    card.querySelector('.save-btn').addEventListener('click', function () {
+      card.querySelector('.save-state').textContent = 'Saving is wired in the next stage.';
+      reviewLog('Save clicked for ' + r.id + ' (not wired yet).');
+    });
+
+    return card;
+  }
+
+  async function loadReviewQueue() {
+    const sb = getSB();
+    if (!sb) return;
+    const list = document.getElementById('review-list');
+    const status = document.getElementById('review-status');
+    const countEl = document.getElementById('review-count');
+    list.innerHTML = '';
+    status.textContent = 'Loading…';
+    reviewLog('Fetching needs_review rows…');
+
+    let resp;
+    try {
+      resp = await sb.from('transactions').select('*').eq('needs_review', true).order('date', { ascending: false });
+    } catch (e) {
+      status.textContent = 'Fetch threw an exception.';
+      reviewLog('Exception: ' + e.message, true);
+      return;
+    }
+
+    if (resp.error) {
+      status.textContent = 'Error loading review queue.';
+      reviewLog('Fetch error: ' + resp.error.message, true);
+      return;
+    }
+
+    const rows = resp.data || [];
+    countEl.textContent = '(' + rows.length + ')';
+    reviewLog('Fetched ' + rows.length + ' flagged row(s).');
+
+    if (rows.length === 0) {
+      status.textContent = 'Nothing to review — all transactions are confirmed. 🎉';
+      return;
+    }
+    status.textContent = '';
+
+    const cats = Array.from(new Set(rows.map(r => r.category).filter(Boolean))).sort();
+    const curs = Array.from(new Set(rows.map(r => r.currency).filter(Boolean)));
+    ['SGD','USD'].forEach(c => { if (!curs.includes(c)) curs.push(c); });
+    fillDatalist('rv-cat', cats);
+    fillDatalist('rv-cur', curs.sort());
+
+    const dirBase = ['debit','credit','refund','transfer'];
+    rows.forEach(r => list.appendChild(renderReviewCard(r, dirBase)));
+  }
+
+  document.getElementById('open-review-btn').addEventListener('click', function () {
+    document.getElementById('review-screen').style.display = 'block';
+    loadReviewQueue();
+  });
+})();
+</script>
+<!-- =================== END PENNY REVIEW SCREEN =================== -->
+
  <!-- ============================================================
      PENNY CORRECTNESS ENGINE — TEMPORARY VALIDATION SCAFFOLD
      Paste just before </body>. Delete after numbers are confirmed.
